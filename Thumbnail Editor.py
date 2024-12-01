@@ -16,6 +16,8 @@ class ThumbnailEditor:
         self.image = None
         self.photo = None
         self.current_text = ""
+        self.highlight_text = ""  # 하이라이트될 텍스트
+        self.highlight_color = "#FF0000"  # 하이라이트 색상
         self.text_position = (50, 50)
         self.text_color = "#FFFFFF"
         self.text_size = 48
@@ -33,8 +35,6 @@ class ThumbnailEditor:
             messagebox.showwarning("폰트 경고", f"'{self.font_path}' 폰트 파일을 찾을 수 없습니다.")
 
         self.setup_ui()
-
-        # 색상 하이라이트를 위한 정규식 패턴
         self.color_pattern = re.compile(r'<([^>]+)>([^<]+)</>')
 
     def get_font(self, size):
@@ -76,7 +76,7 @@ class ThumbnailEditor:
         self.shadow_scale.set(3)
         self.shadow_scale.pack(fill=tk.X)
 
-        # 폰트 크기
+        # 폰트 설정
         font_frame = tk.LabelFrame(left_panel, text="폰트 설정")
         font_frame.pack(fill=tk.X, pady=5)
 
@@ -100,12 +100,32 @@ class ThumbnailEditor:
         text_frame = tk.LabelFrame(right_panel, text="텍스트 입력")
         text_frame.pack(fill=tk.X, pady=5)
 
-        help_text = "색상 적용 방법: <#색상코드>텍스트</>\n예시: <#FF0000>빨간색</> 텍스트"
-        tk.Label(text_frame, text=help_text, justify=tk.LEFT).pack(anchor=tk.W)
+        # 메인 텍스트 입력
+        main_text_frame = tk.Frame(text_frame)
+        main_text_frame.pack(fill=tk.X, pady=5)
+        tk.Label(main_text_frame, text="기본 텍스트:").pack(anchor=tk.W)
 
-        self.text_entry = scrolledtext.ScrolledText(text_frame, width=50, height=4)
+        help_text = "색상 적용 방법: <#색상코드>텍스트</>\n예시: <#FF0000>빨간색</> 텍스트"
+        tk.Label(main_text_frame, text=help_text, justify=tk.LEFT).pack(anchor=tk.W)
+
+        self.text_entry = scrolledtext.ScrolledText(main_text_frame, width=50, height=4)
         self.text_entry.pack(pady=5)
-        tk.Button(text_frame, text="텍스트 적용", command=self.update_text).pack()
+
+        # 하이라이트 텍스트 입력
+        highlight_frame = tk.Frame(text_frame)
+        highlight_frame.pack(fill=tk.X, pady=5)
+
+        highlight_label_frame = tk.Frame(highlight_frame)
+        highlight_label_frame.pack(fill=tk.X)
+        tk.Label(highlight_label_frame, text="하이라이트 텍스트:").pack(side=tk.LEFT)
+        tk.Button(highlight_label_frame, text="하이라이트 색상",
+                  command=self.choose_highlight_color).pack(side=tk.LEFT, padx=5)
+
+        self.highlight_entry = scrolledtext.ScrolledText(highlight_frame, width=50, height=2)
+        self.highlight_entry.pack(pady=5)
+
+        # 텍스트 적용 버튼
+        tk.Button(text_frame, text="텍스트 적용", command=self.update_text).pack(pady=5)
 
         # 이미지 미리보기
         preview_frame = tk.LabelFrame(right_panel, text="미리보기")
@@ -132,26 +152,59 @@ class ThumbnailEditor:
         except Exception as e:
             messagebox.showerror("Error", f"이미지를 불러오는 중 오류가 발생했습니다:\n{str(e)}")
 
-    def draw_text_with_effects(self, draw, position, text, font, default_color):
+    def process_highlight_text(self, text, highlight_words, default_color):
+        if not highlight_words:
+            return [(text, default_color)]
+
+        segments = []
+        current_pos = 0
+        text_lower = text.lower()
+
+        while current_pos < len(text):
+            found_match = False
+            for highlight_word in highlight_words:
+                highlight_lower = highlight_word.lower()
+                pos = text_lower.find(highlight_lower, current_pos)
+
+                if pos == current_pos:
+                    if current_pos > 0:
+                        segments.append((text[0:current_pos], default_color))
+                    segments.append((text[pos:pos + len(highlight_word)], self.highlight_color))
+                    current_pos = pos + len(highlight_word)
+                    found_match = True
+                    break
+
+            if not found_match:
+                next_pos = current_pos + 1
+                segments.append((text[current_pos:next_pos], default_color))
+                current_pos = next_pos
+
+        return segments
+
+    def draw_text_with_effects(self, draw, position, text, highlight_text, font, default_color):
         x, y = position
         line_height = font.getbbox('A')[3] * self.line_spacing
+
+        highlight_words = [word.strip() for word in highlight_text.split('\n') if word.strip()]
 
         for line in text.split('\n'):
             current_x = x
 
-            # 텍스트 파싱
             segments = []
             last_end = 0
             for match in self.color_pattern.finditer(line):
                 if match.start() > last_end:
-                    segments.append((line[last_end:match.start()], default_color))
+                    pre_text = line[last_end:match.start()]
+                    segments.extend(self.process_highlight_text(pre_text, highlight_words, default_color))
                 segments.append((match.group(2), match.group(1)))
                 last_end = match.end()
+
             if last_end < len(line):
-                segments.append((line[last_end:], default_color))
+                remaining_text = line[last_end:]
+                segments.extend(self.process_highlight_text(remaining_text, highlight_words, default_color))
 
             if not segments:
-                segments = [(line, default_color)]
+                segments = self.process_highlight_text(line, highlight_words, default_color)
 
             for text_segment, color in segments:
                 if self.shadow_enabled.get():
@@ -185,7 +238,9 @@ class ThumbnailEditor:
                 font = self.get_font(self.text_size)
 
                 self.draw_text_with_effects(draw, self.text_position,
-                                            self.current_text, font, self.text_color)
+                                            self.current_text,
+                                            self.highlight_text,
+                                            font, self.text_color)
 
                 self.photo = ImageTk.PhotoImage(display_image)
                 self.canvas.delete("all")
@@ -212,12 +267,19 @@ class ThumbnailEditor:
 
     def update_text(self):
         self.current_text = self.text_entry.get('1.0', 'end-1c')
+        self.highlight_text = self.highlight_entry.get('1.0', 'end-1c')
         self.update_canvas()
 
     def choose_color(self):
         color = colorchooser.askcolor(title="텍스트 색상 선택", color=self.text_color)
         if color[1]:
             self.text_color = color[1]
+            self.update_canvas()
+
+    def choose_highlight_color(self):
+        color = colorchooser.askcolor(title="하이라이트 색상 선택", color=self.highlight_color)
+        if color[1]:
+            self.highlight_color = color[1]
             self.update_canvas()
 
     def choose_shadow_color(self):
@@ -257,7 +319,9 @@ class ThumbnailEditor:
                     orig_y = int(self.text_position[1] / self.display_scale)
 
                     self.draw_text_with_effects(draw, (orig_x, orig_y),
-                                                self.current_text, font, self.text_color)
+                                                self.current_text,
+                                                self.highlight_text,
+                                                font, self.text_color)
 
                     save_image.save(file_path)
                     messagebox.showinfo("성공", "이미지가 성공적으로 저장되었습니다!")
@@ -265,12 +329,11 @@ class ThumbnailEditor:
             except Exception as e:
                 messagebox.showerror("Error", f"이미지 저장 중 오류가 발생했습니다:\n{str(e)}")
 
-
+    # 메인 실행
 def main():
     root = tk.Tk()
     app = ThumbnailEditor(root)
     root.mainloop()
-
 
 if __name__ == "__main__":
     main()
