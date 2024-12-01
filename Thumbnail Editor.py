@@ -132,7 +132,7 @@ class ThumbnailEditor:
         self.line_spacing = float(value)
         self.update_canvas()
 
-    # 나머지 메소드들은 이전과 동일...
+    # 나머지 메소드들은 이전과 동일...aa
     def load_image(self):
         try:
             file_path = filedialog.askopenfilename(filetypes=[
