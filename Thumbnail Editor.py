@@ -5,6 +5,7 @@ import cv2
 import numpy as np
 import os
 import re
+import json
 
 
 class ThumbnailEditor:
@@ -12,20 +13,22 @@ class ThumbnailEditor:
         self.root = root
         self.root.title("썸네일 편집기")
 
+
+
         # 이미지 관련 변수
         self.image = None
         self.photo = None
-        self.current_text = ""
-        self.highlight_text = ""  # 하이라이트될 텍스트
-        self.highlight_color = "#FF0000"  # 하이라이트 색상
-        self.text_position = (50, 50)
+        self.current_text = "기본텍스트 기본 텍스트\n초기설정 초기설정"
+        self.highlight_text = "초기설정 초기설정"  # 하이라이트될 텍스트
+        self.highlight_color = "#33CCFF"  # 하이라이트 색상
+        self.text_position = (50, 300)
         self.text_color = "#FFFFFF"
-        self.text_size = 48
+        self.text_size = 69
         self.display_scale = 1.0
         self.line_spacing = 1.2
 
         # 그림자 효과 변수
-        self.shadow_enabled = tk.BooleanVar(value=False)
+        self.shadow_enabled = tk.BooleanVar(value=True)
         self.shadow_color = "#000000"
         self.shadow_offset = 3
 
@@ -111,7 +114,7 @@ class ThumbnailEditor:
         tk.Label(font_frame, text="크기:").pack(anchor=tk.W)
         self.size_scale = tk.Scale(font_frame, from_=12, to=100, orient=tk.HORIZONTAL,
                                    command=self.update_font_size)
-        self.size_scale.set(48)
+        self.size_scale.set(59)
         self.size_scale.pack(fill=tk.X)
 
         tk.Label(font_frame, text="줄간격:").pack(anchor=tk.W)
