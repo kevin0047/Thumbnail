@@ -48,8 +48,36 @@ class ThumbnailEditor:
                 return ImageFont.load_default()
 
     def setup_ui(self):
-        # 메인 프레임
-        main_frame = tk.Frame(self.root)
+        # 루트에 캔버스와 스크롤바 추가
+        container = tk.Frame(self.root)
+        container.pack(fill=tk.BOTH, expand=True)
+
+        canvas = tk.Canvas(container)
+        scrollbar = tk.Scrollbar(container, orient="vertical", command=canvas.yview)
+        h_scrollbar = tk.Scrollbar(container, orient="horizontal", command=canvas.xview)
+
+        # 스크롤 가능한 프레임
+        self.scrollable_frame = tk.Frame(canvas)
+
+        # 프레임 크기가 변경될 때 스크롤 영역 업데이트
+        self.scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(
+                scrollregion=canvas.bbox("all")
+            )
+        )
+
+        # 캔버스에 프레임 추가
+        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set, xscrollcommand=h_scrollbar.set)
+
+        # 컴포넌트 배치
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        h_scrollbar.pack(side="bottom", fill="x")
+
+        # 메인 프레임 (이제 scrollable_frame의 자식)
+        main_frame = tk.Frame(self.scrollable_frame)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
         # 왼쪽 패널 (설정)
@@ -105,7 +133,7 @@ class ThumbnailEditor:
         main_text_frame.pack(fill=tk.X, pady=5)
         tk.Label(main_text_frame, text="기본 텍스트:").pack(anchor=tk.W)
 
-        help_text = "색상 적용 방법: <#색상코드>텍스트</>\n예시: <#FF0000>빨간색</> 텍스트"
+        help_text = "."
         tk.Label(main_text_frame, text=help_text, justify=tk.LEFT).pack(anchor=tk.W)
 
         self.text_entry = scrolledtext.ScrolledText(main_text_frame, width=50, height=4)
@@ -131,12 +159,76 @@ class ThumbnailEditor:
         preview_frame = tk.LabelFrame(right_panel, text="미리보기")
         preview_frame.pack(fill=tk.BOTH, expand=True, pady=5)
 
+        # 이미지 캔버스
         self.canvas = tk.Canvas(preview_frame, width=800, height=600, bg='gray')
         self.canvas.pack(fill=tk.BOTH, expand=True)
+
+        # 기존 클릭 이벤트 유지
         self.canvas.bind('<Button-1>', self.on_canvas_click)
 
         # 저장 버튼
         tk.Button(right_panel, text="저장하기", command=self.save_image).pack(pady=5)
+
+    def resize_image(self, image):
+        """이미지를 1920x1080 크기로 리사이즈"""
+        target_width = 1920
+        target_height = 1080
+
+        # 원본 이미지의 비율을 계산
+        width_ratio = target_width / image.width
+        height_ratio = target_height / image.height
+
+        # 이미지를 확대/축소할 비율 결정
+        if width_ratio > height_ratio:
+            resize_ratio = width_ratio
+        else:
+            resize_ratio = height_ratio
+
+        # 새로운 크기 계산
+        new_width = int(image.width * resize_ratio)
+        new_height = int(image.height * resize_ratio)
+
+        # 이미지 리사이즈
+        resized_image = image.resize((new_width, new_height), Image.LANCZOS)
+
+        # 1920x1080 크기의 검은색 배경 생성
+        background = Image.new('RGB', (target_width, target_height), 'black')
+
+        # 리사이즈된 이미지를 중앙에 배치
+        offset_x = (target_width - new_width) // 2
+        offset_y = (target_height - new_height) // 2
+        background.paste(resized_image, (offset_x, offset_y))
+
+        return background
+
+    def apply_overlay(self, base_image):
+        """오버레이 이미지를 기본 이미지 위에 합성"""
+        try:
+            # 오버레이 이미지 로드 (클래스 초기화 시 한 번만 로드하도록 수정 가능)
+            overlay_path = "썸네일 필터.png"  # 오버레이 이미지 경로
+            if not os.path.exists(overlay_path):
+                messagebox.showwarning("경고", "오버레이 이미지를 찾을 수 없습니다.")
+                return base_image
+
+            overlay = Image.open(overlay_path)
+
+            # 오버레이 이미지가 1920x1080이 아닌 경우 리사이즈
+            if overlay.size != (1920, 1080):
+                overlay = overlay.resize((1920, 1080), Image.LANCZOS)
+
+            # RGBA 모드로 변환
+            if base_image.mode != 'RGBA':
+                base_image = base_image.convert('RGBA')
+            if overlay.mode != 'RGBA':
+                overlay = overlay.convert('RGBA')
+
+            # 이미지 합성
+            composite = Image.alpha_composite(base_image, overlay)
+            return composite
+
+        except Exception as e:
+            messagebox.showerror("Error", f"오버레이 적용 중 오류가 발생했습니다:\n{str(e)}")
+            return base_image
 
     def load_image(self):
         try:
@@ -144,7 +236,16 @@ class ThumbnailEditor:
                 ("Image files", "*.jpg *.jpeg *.png *.bmp *.gif *.tiff")])
 
             if file_path and os.path.exists(file_path):
-                self.image = Image.open(file_path)
+                # 원본 이미지 로드 및 리사이즈
+                original_image = Image.open(file_path)
+                resized_image = self.resize_image(original_image)
+
+                # RGBA 모드로 변환
+                if resized_image.mode != 'RGBA':
+                    resized_image = resized_image.convert('RGBA')
+
+                # 오버레이 적용
+                self.image = self.apply_overlay(resized_image)
                 self.update_canvas()
             else:
                 if file_path:
