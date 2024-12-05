@@ -58,6 +58,84 @@ class DataCollectorGUI:
         self.progress['value'] = 0
         Thread(target=self.collect_data).start()
 
+    def clean_and_process_text(self, content_path):
+        output_path = content_path.replace('content.txt', 'recontent.txt')
+
+        with open(content_path, 'r', encoding='utf-8') as file:
+            lines = file.readlines()
+
+        filtered_lines = []
+        i = 0
+        while i < len(lines):
+            current_line = lines[i].strip()
+
+            if current_line.startswith('https://youtube.com'):
+                while i < len(lines) and not lines[i].strip().endswith('youtube.com'):
+                    i += 1
+                i += 1
+                continue
+
+            if current_line.startswith('http'):
+                if i + 3 < len(lines):
+
+                    if lines[i + 3].strip()[0].isascii() and lines[i + 3].strip()[0].isalpha():
+                        i += 4  # 해당 블록 전체 스킵
+                        continue
+                    else:
+                        i += 1  # https 줄만 스킵
+                        continue
+                else:
+                    i += 1  # https 줄만 스킵
+                    continue
+
+            if '[원본 보기]' in current_line:
+                i += 1
+                continue
+
+            filtered_lines.append(lines[i])
+            i += 1
+
+        # 빈 줄과 숫자만 있는 줄 제거
+        non_empty_lines = [line.strip() for line in filtered_lines if line.strip() and not line.strip().isdigit()]
+
+        # 마침표 추가 및 텍스트 정제
+        cleaned_lines = []
+        for line in non_empty_lines:
+            clean_line = line.strip() + '.'
+            clean_line = clean_line.replace('ㅋ', '.').replace('ㅂㄷ', '부들') \
+                .replace('ㄹㅈㄷ', '레전드').replace('ㄱㅊ', '괜찮') \
+                .replace('ㄳ', '감사').replace('ㄱㅅ', '감사') \
+                .replace('ㅇㅇ', '.').replace('ㅉㅉ', '쯧쯧') \
+                .replace('ㄷ', '.').replace('ㄹㅇ', '레알') \
+                .replace('ㅠ', '.').replace('ㅜ', '.') \
+                .replace('jpg', '.').replace('png', '.') \
+                .replace('JPG', '.').replace('TXT', '.') \
+                .replace('txt', '.').replace('GIF', '.') \
+                .replace('gif', '.').replace('|', '.') \
+                .replace('-', '.').replace('❗', '.') \
+                .replace('!', '.').replace('❓', '.') \
+                .replace('♥', '.').replace('♡', '.') \
+                .replace('✋', '.').replace('ㅅㅂ', '.') \
+                .replace('ㅆㅂ', '.').replace('ㅂㅅ', '.') \
+                .replace('ㅄ', '.').replace('ㅁㅌㅊ', '몇타치') \
+                .replace('ㄱㅆㅅㅌㅊ', '개씹상타치').replace('ㅆㅅㅌㅊ', '씹상타치') \
+                .replace('ㅅㅌㅊ', '상타치').replace('ㅈㄴ', '존나') \
+                .replace('ㅇㅈㄹ', '이지랄').replace('ㅇㅈ', '인정') \
+                .replace('ㅈ', '좃').replace('1돌', '일돌') \
+                .replace('2돌', '이돌').replace('3돌', '삼돌') \
+                .replace('4돌', '사돌').replace('5돌', '오돌') \
+                .replace('6돌', '육돌').replace('4성', '사성') \
+                .replace('5성', '오성').replace('ㄴㄴ', '노노') \
+                .replace('관련게시물 : ', '.') .replace('[단독]', '.')\
+
+            while '..' in clean_line:
+                clean_line = clean_line.replace('..', '.')
+            cleaned_lines.append(clean_line)
+
+        # 결과 저장
+        text = '\n'.join(cleaned_lines).rstrip('.')
+        with open(output_path, 'w', encoding='utf-8') as file:
+            file.write(text)
     def collect_data(self):
         try:
             self.update_status("브라우저 실행 중...")
@@ -120,15 +198,19 @@ class DataCollectorGUI:
 
             # 텍스트 저장
             os.makedirs(f"{base_path}/txt", exist_ok=True)
-            with open(f"{base_path}/txt/content.txt", 'a', encoding='utf-8') as f:
+            content_path = f"{base_path}/txt/content.txt"
+
+            with open(content_path, 'a', encoding='utf-8') as f:
                 f.write(f"{title}\n{content}\n")
+
+            # 정제된 텍스트 생성
+            self.clean_and_process_text(content_path)
 
             with open(f"{base_path}/txt/comment.txt", 'w', encoding='utf-8') as f:
                 for comment in comment_text:
                     f.write(comment)
 
-            # 이미지 생성
-            self.create_comment_images(comment_text, base_path)
+
 
             self.progress['value'] = 100
             driver.quit()
@@ -141,39 +223,10 @@ class DataCollectorGUI:
             self.start_button.config(state="normal")
             messagebox.showerror("오류", str(e))
 
-    def create_comment_images(self, comments, base_path):
-        def create_image_with_comments(comments, font_size, font_name, bg_color, text_color, output_path):
-            font = ImageFont.truetype(font_name, font_size)
-            image = Image.new('RGB', (1610, 900), bg_color)
-            draw = ImageDraw.Draw(image)
 
-            ascent, descent = font.getmetrics()
-            line_height = ascent + descent
 
-            y, x = 20, 20
-            for comment in comments:
-                draw.text((x, y), comment, font=font, fill=text_color)
-                y += line_height
 
-                if y > 880:
-                    y = 20
-                    x += font.getbbox(comment)[2] + 40
 
-            image.save(output_path)
-
-        self.update_status("이미지 생성 중...")
-        font_path = 'C:/Windows/Fonts/NanumGothic.ttf'
-        counter = 1
-
-        for i in range(0, len(comments), 130):
-            comment_set = comments[i:i + 130]
-            while os.path.exists(f"{base_path}/a ({counter}).png"):
-                counter += 1
-            create_image_with_comments(
-                comment_set, 20, font_path, 'white', 'black',
-                f"{base_path}/a ({counter}).png"
-            )
-            counter += 1
 
 
 if __name__ == "__main__":
