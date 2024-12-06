@@ -209,11 +209,15 @@ class DataCollectorGUI:
             with open(f"{base_path}/txt/comment.txt", 'w', encoding='utf-8') as f:
                 for comment in comment_text:
                     f.write(comment)
+            driver.quit()
+
+            # 댓글 영상 생성
+            self.update_status("댓글 영상 생성 중...")
 
 
 
             self.progress['value'] = 100
-            driver.quit()
+
             winsound.PlaySound("SystemExit", winsound.SND_ALIAS)
             self.update_status("작업 완료!")
             self.start_button.config(state="normal")
