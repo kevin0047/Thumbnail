@@ -7,7 +7,7 @@ from PIL import Image, ImageDraw, ImageFont
 import re
 import os
 from threading import Thread
-
+from commentVideo import CommentVideoGenerator
 
 class DataCollectorGUI:
     def __init__(self, root):
@@ -213,6 +213,22 @@ class DataCollectorGUI:
 
             # 댓글 영상 생성
             self.update_status("댓글 영상 생성 중...")
+            try:
+                comment_file = f"{base_path}/txt/comment.txt"
+                video_output = f"{base_path}/output_comments.mp4"
+                generator = CommentVideoGenerator()
+
+                with open(comment_file, 'r', encoding='utf-8') as f:
+                    comments = f.readlines()
+
+                for comment in comments:
+                    if comment.strip():  # 빈 줄 제외
+                        generator.add_comment(comment)
+
+                generator.create_video(video_output)
+                self.update_status("댓글 영상 생성 완료!")
+            except Exception as e:
+                self.update_status(f"댓글 영상 생성 실패: {str(e)}")
 
 
 
