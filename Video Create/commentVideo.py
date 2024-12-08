@@ -41,7 +41,7 @@ class CommentVideoGenerator:
 
     def create_comment_image(self, text, is_reply=False):
         # 폰트 설정
-        font_size = 16
+        font_size = 24
         try:
             font = ImageFont.truetype("NanumGothic.ttf", font_size)
         except:
@@ -57,7 +57,7 @@ class CommentVideoGenerator:
 
         # 텍스트 길이 제한 및 래핑
         text = self.truncate_text(text)
-        wrapper = textwrap.TextWrapper(width=40)  # 40자에서 줄바꿈
+        wrapper = textwrap.TextWrapper(width=25)  # 40자에서 줄바꿈
         text_lines = wrapper.wrap(text)
 
         # 댓글 높이 계산

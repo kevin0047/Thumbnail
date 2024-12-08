@@ -26,7 +26,7 @@ class SubtitleTTSGeneratorGUI:
         # 변수 초기화
         self.input_file = tk.StringVar()
         self.output_folder = tk.StringVar()
-        self.font_size = tk.StringVar(value="24")
+        self.font_size = tk.StringVar(value="80")
 
         # 고정 TTS 설정
         self.CHARS_PER_SECOND = 6
@@ -97,7 +97,7 @@ class SubtitleTTSGeneratorGUI:
         )
         if filename:
             self.input_file.set(filename)
-            self.output_folder.set(os.path.dirname(filename))
+            #self.output_folder.set(os.path.dirname(filename))
 
     def browse_output_folder(self):
         folder = filedialog.askdirectory(title="출력 폴더 선택")

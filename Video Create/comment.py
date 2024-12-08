@@ -26,7 +26,7 @@ class DataCollectorGUI:
         path_frame = ttk.LabelFrame(root, text="저장 경로 설정", padding="10")
         path_frame.pack(fill="x", padx=10, pady=5)
 
-        self.save_path = tk.StringVar(value="C:/Users/ska00/Desktop/뉴스")
+        self.save_path = tk.StringVar(value="C:/Users/ska00/Desktop/news")
         path_entry = ttk.Entry(path_frame, textvariable=self.save_path, width=50)
         path_entry.pack(side="left", padx=5)
 
