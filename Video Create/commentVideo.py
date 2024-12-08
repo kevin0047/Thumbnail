@@ -114,8 +114,8 @@ class CommentVideoGenerator:
         for new_comment in self.comments:
             visible_comments.append(new_comment)
 
-            # 0.3초에서 0.7초 사이의 랜덤한 시간 생성
-            delay_time = random.uniform(0.3, 0.7)
+            #  랜덤한 시간 생성
+            delay_time = random.uniform(0.5, 1.0)
             # 필요한 프레임 수 계산
             frames_to_show = int(delay_time * base_fps)
 
