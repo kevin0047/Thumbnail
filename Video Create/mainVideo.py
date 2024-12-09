@@ -257,8 +257,9 @@ class VideoMakerApp:
 
         canvas[y_start:y_end, x_start:x_end] = img[img_y_start:img_y_end, img_x_start:img_x_end]
         return canvas
-    def create_frame(self, main_path, subtitle_img_path, side_frame, frame_size, frame_index, total_frames, panning_enabled=False):
-        """프레임 생성 함수 수정"""
+
+    def create_frame(self, main_path, subtitle_img_path, side_frame, frame_size, frame_index, total_frames,
+                     panning_enabled=False, sub_image_path="", sub_border=False):
         main_width = 1370
         side_width = 550
         height = 1080
@@ -297,6 +298,46 @@ class VideoMakerApp:
         # 최종 프레임 생성
         final_frame = np.zeros((height, main_width + side_width, 3), dtype=np.uint8)
         final_frame[:, :main_width] = main_img
+
+        # 서브 이미지 처리 (있는 경우)
+        if sub_image_path:
+            try:
+                sub_img = Image.open(sub_image_path)
+                # RGBA 처리
+                if sub_img.mode == 'RGBA':
+                    sub_img_np = np.array(sub_img)
+                    sub_bgr = cv2.cvtColor(sub_img_np[:, :, :3], cv2.COLOR_RGB2BGR)
+                    alpha = sub_img_np[:, :, 3] / 255.0
+                else:
+                    sub_img = sub_img.convert('RGB')
+                    sub_bgr = cv2.cvtColor(np.array(sub_img), cv2.COLOR_RGB2BGR)
+                    alpha = np.ones(sub_bgr.shape[:2])
+
+                # 중앙 배치를 위한 좌표 계산
+                y_offset = (height - sub_bgr.shape[0]) // 2
+                x_offset = (main_width - sub_bgr.shape[1]) // 2
+
+                # 서브 이미지가 프레임을 벗어나지 않도록 처리
+                if y_offset >= 0 and x_offset >= 0:
+                    roi = final_frame[y_offset:y_offset + sub_bgr.shape[0],
+                          x_offset:x_offset + sub_bgr.shape[1]]
+
+                    # 알파 블렌딩
+                    for c in range(3):
+                        roi[:, :, c] = roi[:, :, c] * (1 - alpha) + sub_bgr[:, :, c] * alpha
+
+                    final_frame[y_offset:y_offset + sub_bgr.shape[0],
+                    x_offset:x_offset + sub_bgr.shape[1]] = roi
+
+                    # 테두리 그리기
+                    if sub_border:
+                        cv2.rectangle(final_frame,
+                                      (x_offset, y_offset),
+                                      (x_offset + sub_bgr.shape[1], y_offset + sub_bgr.shape[0]),
+                                      (0, 0, 255), 2)
+
+            except Exception as e:
+                print(f"서브 이미지 처리 중 오류: {str(e)}")
 
         # 사이드 영상 프레임 배치
         if side_frame is not None:
@@ -406,7 +447,9 @@ class VideoMakerApp:
                     frame_size,
                     clip_frame_idx,
                     clip_total_frames,
-                    item[4] if len(item) > 4 else False  # 패닝 효과 활성화 여부
+                    item[4] if len(item) > 4 else False,  # panning_enabled
+                    item[5] if len(item) > 5 else "",  # sub_image_path
+                    item[6] if len(item) > 6 else False  # sub_border
                 )
                 out.write(frame)
                 frame_count += 1
@@ -498,59 +541,72 @@ class ItemDialog(tk.Toplevel):
         super().__init__(parent)
         self.title("항목 추가")
         self.result = None
-        self.create_widgets()
 
-        # 모달 창으로 설정
+        # 변수 추가
+        self.sub_image_path = tk.StringVar()
+        self.sub_border = tk.BooleanVar(value=False)
+
+        self.create_widgets()
         self.transient(parent)
         self.grab_set()
-
-        # 창 크기와 위치 설정
-        self.geometry('800x450')
+        self.geometry('800x500')  # 높이 증가
         self.resizable(False, False)
 
     def create_widgets(self):
         main_frame = ttk.Frame(self, padding="10")
         main_frame.pack(fill='both', expand=True)
 
-        # 메인 이미지 선택
-        ttk.Label(main_frame, text="메인 이미지:").grid(row=0, column=0, padx=5, pady=5, sticky='e')
+        # 메인 이미지/비디오 선택
+        ttk.Label(main_frame, text="메인 이미지/비디오:").grid(row=0, column=0, padx=5, pady=5, sticky='e')
         self.main_path = tk.StringVar()
         ttk.Entry(main_frame, textvariable=self.main_path, width=50).grid(row=0, column=1, padx=5)
         ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('main')).grid(row=0, column=2, padx=5)
 
+        # 서브 이미지 선택 (선택사항)
+        ttk.Label(main_frame, text="서브 이미지 (선택사항):").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        ttk.Entry(main_frame, textvariable=self.sub_image_path, width=50).grid(row=1, column=1, padx=5)
+        ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('sub')).grid(row=1, column=2, padx=5)
+
+        # 서브 이미지 테두리 옵션
+        sub_border_frame = ttk.Frame(main_frame)
+        sub_border_frame.grid(row=2, column=0, columnspan=3, pady=5)
+        ttk.Checkbutton(sub_border_frame, text="서브 이미지 빨간 테두리 적용",
+                        variable=self.sub_border).pack()
+
         # 자막 이미지 선택
-        ttk.Label(main_frame, text="자막 이미지:").grid(row=1, column=0, padx=5, pady=5, sticky='e')
+        ttk.Label(main_frame, text="자막 이미지:").grid(row=3, column=0, padx=5, pady=5, sticky='e')
         self.subtitle_path = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.subtitle_path, width=50).grid(row=1, column=1, padx=5)
-        ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('subtitle')).grid(row=1, column=2, padx=5)
+        ttk.Entry(main_frame, textvariable=self.subtitle_path, width=50).grid(row=3, column=1, padx=5)
+        ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('subtitle')).grid(row=3, column=2, padx=5)
 
         # 음성 파일 선택
-        ttk.Label(main_frame, text="음성 파일:").grid(row=2, column=0, padx=5, pady=5, sticky='e')
+        ttk.Label(main_frame, text="음성 파일:").grid(row=4, column=0, padx=5, pady=5, sticky='e')
         self.audio_path = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.audio_path, width=50).grid(row=2, column=1, padx=5)
-        ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('audio')).grid(row=2, column=2, padx=5)
+        ttk.Entry(main_frame, textvariable=self.audio_path, width=50).grid(row=4, column=1, padx=5)
+        ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('audio')).grid(row=4, column=2, padx=5)
 
         # 이미지 표시 방식 선택
         display_frame = ttk.LabelFrame(main_frame, text="이미지 표시 방식", padding="5")
-        display_frame.grid(row=3, column=0, columnspan=3, pady=10, sticky='ew')
+        display_frame.grid(row=5, column=0, columnspan=3, pady=10, sticky='ew')
 
         self.display_mode = tk.StringVar(value="fit")
         ttk.Radiobutton(display_frame, text="화면에 맞춤 (비율 유지, 잘림 허용)",
                         variable=self.display_mode, value="fit").pack(side='left', padx=20)
         ttk.Radiobutton(display_frame, text="원본 크기 (블러 배경)",
                         variable=self.display_mode, value="original").pack(side='left', padx=20)
-        # 이미지 패닝 효과 옵션 추가
+
+        # 패닝 효과 옵션
         self.panning_enabled = tk.BooleanVar(value=False)
         self.panning_frame = ttk.LabelFrame(main_frame, text="이미지 패닝 효과", padding="5")
-        self.panning_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky='ew')
+        self.panning_frame.grid(row=6, column=0, columnspan=3, pady=10, sticky='ew')
 
         self.panning_check = ttk.Checkbutton(self.panning_frame, text="자동 패닝 효과 적용",
                                              variable=self.panning_enabled)
         self.panning_check.pack(side='left', padx=20)
-        # 버튼 프레임
-        button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=5, column=0, columnspan=3, pady=10)
 
+        # 버튼
+        button_frame = ttk.Frame(main_frame)
+        button_frame.grid(row=7, column=0, columnspan=3, pady=10)
         ttk.Button(button_frame, text="확인", command=self.confirm, width=10).pack(side='left', padx=10)
         ttk.Button(button_frame, text="취소", command=self.cancel, width=10).pack(side='left', padx=10)
 
@@ -562,7 +618,7 @@ class ItemDialog(tk.Toplevel):
                 ('Image files', '*.png *.jpg *.jpeg'),
                 ('Video files', '*.mp4 *.avi *.mov *.gif')
             ]
-        elif file_type == 'subtitle':
+        elif file_type in ['sub', 'subtitle']:
             filetypes = [('Image files', '*.png *.jpg *.jpeg')]
         elif file_type == 'audio':
             filetypes = [('Audio files', '*.wav')]
@@ -571,15 +627,16 @@ class ItemDialog(tk.Toplevel):
         if path:
             if file_type == 'main':
                 self.main_path.set(path)
+            elif file_type == 'sub':
+                self.sub_image_path.set(path)
             elif file_type == 'subtitle':
                 self.subtitle_path.set(path)
             else:
                 self.audio_path.set(path)
 
     def confirm(self):
-        # 모든 필드가 채워졌는지 확인
         if not all([self.main_path.get(), self.subtitle_path.get(), self.audio_path.get()]):
-            messagebox.showwarning('경고', '모든 파일을 선택해주세요!')
+            messagebox.showwarning('경고', '필수 파일을 모두 선택해주세요!\n(메인, 자막, 음성)')
             return
 
         self.result = (
@@ -587,7 +644,9 @@ class ItemDialog(tk.Toplevel):
             self.subtitle_path.get(),
             self.audio_path.get(),
             self.display_mode.get(),
-            self.panning_enabled.get()  # 패닝 효과 상태 추가
+            self.panning_enabled.get(),
+            self.sub_image_path.get(),  # 서브 이미지 경로 (비어있을 수 있음)
+            self.sub_border.get()  # 테두리 적용 여부
         )
         self.destroy()
 
