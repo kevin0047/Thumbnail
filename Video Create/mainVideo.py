@@ -199,8 +199,66 @@ class VideoMakerApp:
         background[y_offset:y_offset + height, x_offset:x_offset + width] = frame
         return background
 
-    def create_frame(self, main_path, subtitle_img_path, side_frame, frame_size, frame_index, total_frames):
-        """프레임 생성 함수"""
+    def calculate_panning_parameters(self, image_path, target_size):
+        """이미지의 패닝 파라미터 계산"""
+        img = Image.open(image_path)
+        img_width, img_height = img.size
+        target_width, target_height = target_size
+
+        # 이미지를 화면에 꽉 차게 리사이징
+        img_ratio = img_width / img_height
+        target_ratio = target_width / target_height
+
+        if img_ratio > target_ratio:
+            # 세로에 맞추고 가로는 잘림
+            new_height = target_height
+            new_width = int(new_height * img_ratio)
+            return {
+                'direction': 'horizontal',
+                'size': (new_width, new_height),
+                'total_move': new_width - target_width
+            }
+        else:
+            # 가로에 맞추고 세로는 잘림
+            new_width = target_width
+            new_height = int(new_width / img_ratio)
+            return {
+                'direction': 'vertical',
+                'size': (new_width, new_height),
+                'total_move': new_height - target_height
+            }
+
+    def apply_panning(self, img, params, progress, target_size):
+        """패닝 효과 적용"""
+        if params['direction'] == 'horizontal':
+            # 좌에서 우로 이동
+            offset = int(params['total_move'] * progress)
+            x_offset = -offset
+            y_offset = 0
+        else:
+            # 위에서 아래로 이동
+            offset = int(params['total_move'] * progress)
+            x_offset = 0
+            y_offset = -offset
+
+        # 새 캔버스 생성
+        canvas = np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
+
+        # 이미지 위치 계산
+        x_start = max(0, x_offset)
+        y_start = max(0, y_offset)
+        x_end = min(target_size[0], x_offset + params['size'][0])
+        y_end = min(target_size[1], y_offset + params['size'][1])
+
+        img_x_start = max(0, -x_offset)
+        img_y_start = max(0, -y_offset)
+        img_x_end = img_x_start + (x_end - x_start)
+        img_y_end = img_y_start + (y_end - y_start)
+
+        canvas[y_start:y_end, x_start:x_end] = img[img_y_start:img_y_end, img_x_start:img_x_end]
+        return canvas
+    def create_frame(self, main_path, subtitle_img_path, side_frame, frame_size, frame_index, total_frames, panning_enabled=False):
+        """프레임 생성 함수 수정"""
         main_width = 1370
         side_width = 550
         height = 1080
@@ -222,8 +280,19 @@ class VideoMakerApp:
             else:
                 main_img = np.zeros((height, main_width, 3), dtype=np.uint8)
         else:
-            # 이미지 처리 (기존 process_image 함수 사용)
-            main_img = self.process_image(main_path, (main_width, height), 'original')
+            if panning_enabled:
+                # 패닝 효과 적용
+                img = cv2.imread(main_path)
+                if img is None:
+                    main_img = np.zeros((height, main_width, 3), dtype=np.uint8)
+                else:
+                    params = self.calculate_panning_parameters(main_path, (main_width, height))
+                    img = cv2.resize(img, params['size'])
+                    progress = frame_index / total_frames
+                    main_img = self.apply_panning(img, params, progress, (main_width, height))
+            else:
+                # 기존 이미지 처리 방식
+                main_img = self.process_image(main_path, (main_width, height), 'original')
 
         # 최종 프레임 생성
         final_frame = np.zeros((height, main_width + side_width, 3), dtype=np.uint8)
@@ -286,8 +355,9 @@ class VideoMakerApp:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(temp_video_path, fourcc, fps, frame_size)
 
-            # 각 클립의 시작 시간을 저장할 리스트
+            # 각 클립의 시작 시간과 길이를 저장할 리스트
             clip_start_times = []
+            clip_durations = []
             current_time = 0
 
             # 각 클립의 길이 계산
@@ -301,11 +371,13 @@ class VideoMakerApp:
                 clip_duration = max(video_duration, audio_duration)
 
                 clip_start_times.append(current_time)
+                clip_durations.append(clip_duration)
                 current_time += clip_duration
 
             total_frames = int(current_time * fps)
             frame_count = 0
 
+            # 프레임 생성 및 저장
             for frame_idx in range(total_frames):
                 current_time = frame_idx / fps
 
@@ -323,13 +395,18 @@ class VideoMakerApp:
                     if not ret:
                         side_frame = np.zeros((1080, 550, 3), dtype=np.uint8)
 
+                # 현재 클립 내에서의 프레임 인덱스 계산
+                clip_frame_idx = frame_idx - int(clip_start_times[current_clip_idx] * fps)
+                clip_total_frames = int(clip_durations[current_clip_idx] * fps)
+
                 frame = self.create_frame(
                     item[0],  # main_path
                     item[1],  # subtitle_path
                     side_frame,
                     frame_size,
-                    frame_idx - int(clip_start_times[current_clip_idx] * fps),  # 클립 내에서의 프레임 인덱스
-                    total_frames
+                    clip_frame_idx,
+                    clip_total_frames,
+                    item[4] if len(item) > 4 else False  # 패닝 효과 활성화 여부
                 )
                 out.write(frame)
                 frame_count += 1
@@ -348,6 +425,7 @@ class VideoMakerApp:
             filter_complex = []
             input_index = 1
 
+            # 각 클립의 오디오 처리
             for i, item in enumerate(self.items):
                 main_path = item[0]
                 audio_path = item[2]
@@ -365,7 +443,7 @@ class VideoMakerApp:
                     f'[{input_index}:a]adelay={int(clip_start_times[i] * 1000)}|{int(clip_start_times[i] * 1000)}[a{i}];')
                 input_index += 1
 
-            # 모든 오디오 믹스
+            # 모든 오디오 트랙 믹스
             mix_inputs = []
             for i in range(len(self.items)):
                 if self.items[i][0].lower().endswith(('.mp4', '.avi', '.mov')):
@@ -374,6 +452,7 @@ class VideoMakerApp:
 
             filter_complex.append(f'{"".join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=longest[aout]')
 
+            # 최종 ffmpeg 명령어 실행
             ffmpeg_command = ['ffmpeg', '-y'] + ffmpeg_inputs + \
                              ['-filter_complex', ''.join(filter_complex),
                               '-map', '0:v', '-map', '[aout]',
@@ -426,7 +505,7 @@ class ItemDialog(tk.Toplevel):
         self.grab_set()
 
         # 창 크기와 위치 설정
-        self.geometry('500x250')
+        self.geometry('800x450')
         self.resizable(False, False)
 
     def create_widgets(self):
@@ -460,10 +539,17 @@ class ItemDialog(tk.Toplevel):
                         variable=self.display_mode, value="fit").pack(side='left', padx=20)
         ttk.Radiobutton(display_frame, text="원본 크기 (블러 배경)",
                         variable=self.display_mode, value="original").pack(side='left', padx=20)
+        # 이미지 패닝 효과 옵션 추가
+        self.panning_enabled = tk.BooleanVar(value=False)
+        self.panning_frame = ttk.LabelFrame(main_frame, text="이미지 패닝 효과", padding="5")
+        self.panning_frame.grid(row=4, column=0, columnspan=3, pady=10, sticky='ew')
 
+        self.panning_check = ttk.Checkbutton(self.panning_frame, text="자동 패닝 효과 적용",
+                                             variable=self.panning_enabled)
+        self.panning_check.pack(side='left', padx=20)
         # 버튼 프레임
         button_frame = ttk.Frame(main_frame)
-        button_frame.grid(row=4, column=0, columnspan=3, pady=10)
+        button_frame.grid(row=5, column=0, columnspan=3, pady=10)
 
         ttk.Button(button_frame, text="확인", command=self.confirm, width=10).pack(side='left', padx=10)
         ttk.Button(button_frame, text="취소", command=self.cancel, width=10).pack(side='left', padx=10)
@@ -500,7 +586,8 @@ class ItemDialog(tk.Toplevel):
             self.main_path.get(),
             self.subtitle_path.get(),
             self.audio_path.get(),
-            self.display_mode.get()
+            self.display_mode.get(),
+            self.panning_enabled.get()  # 패닝 효과 상태 추가
         )
         self.destroy()
 
