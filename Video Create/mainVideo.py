@@ -3,10 +3,11 @@ from tkinter import ttk, filedialog, messagebox
 import os
 import cv2
 import numpy as np
-from PIL import Image, ImageFilter
+from PIL import Image, ImageFilter, ImageSequence
 import threading
 import wave
 from datetime import datetime
+import subprocess
 
 
 class VideoMakerApp:
@@ -16,7 +17,7 @@ class VideoMakerApp:
         self.root.geometry('1000x800')
 
         self.side_video_path = r'C:\Users\ska00\Desktop\news\output_comments.mp4'
-        self.items = []  # 이미지, 자막, 음성 파일 정보를 저장할 리스트
+        self.items = []  # 이미지/영상, 자막, 음성 파일 정보를 저장할 리스트
         self.create_widgets()
 
     def create_widgets(self):
@@ -152,76 +153,120 @@ class VideoMakerApp:
             rate = wav_file.getframerate()
             duration = frames / float(rate)
             return duration
+    def get_media_duration(self, file_path):
+        """미디어 파일(비디오/오디오)의 길이를 반환"""
+        if file_path.lower().endswith('.wav'):
+            with wave.open(file_path, 'rb') as wav_file:
+                frames = wav_file.getnframes()
+                rate = wav_file.getframerate()
+                return frames / float(rate)
+        elif file_path.lower().endswith(('.mp4', '.avi', '.mov', '.gif')):
+            cap = cv2.VideoCapture(file_path)
+            if cap.isOpened():
+                fps = cap.get(cv2.CAP_PROP_FPS)
+                frame_count = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+                duration = frame_count / fps
+                cap.release()
+                return duration
+            return 0
+        return 0
 
-    def create_frame(self, main_img_path, subtitle_img_path, side_frame, frame_size, display_mode):
-        try:
-            # 메인 영상과 사이드 영상의 크기 설정
-            main_width = 1370
-            side_width = 550
-            height = 1080
+    def process_video_frame(self, frame, target_size):
+        """비디오 프레임 처리"""
+        if frame is None:
+            return np.zeros((target_size[1], target_size[0], 3), dtype=np.uint8)
 
-            # 메인 이미지 처리
-            main_img = self.process_image(main_img_path, (main_width, height), display_mode)
+        # 원본 크기 유지하면서 최대 크기에 맞추기
+        height, width = frame.shape[:2]
+        max_width, max_height = 1370, 1080
 
-            # 최종 프레임 생성
-            final_frame = np.zeros((height, main_width + side_width, 3), dtype=np.uint8)
+        # 스케일 계산
+        scale = min(max_width / width, max_height / height)
+        if scale < 1:  # 이미지가 더 큰 경우만 축소
+            new_width = int(width * scale)
+            new_height = int(height * scale)
+            frame = cv2.resize(frame, (new_width, new_height))
 
-            # 메인 이미지를 왼쪽에 배치
-            if display_mode == 'fit':
-                # 이미지가 프레임보다 큰 경우 중앙 부분을 사용
-                if main_img.shape[1] > main_width:
-                    start = (main_img.shape[1] - main_width) // 2
-                    main_img = main_img[:, start:start + main_width]
-                if main_img.shape[0] > height:
-                    start = (main_img.shape[0] - height) // 2
-                    main_img = main_img[start:start + height]
+        # 블러 배경 생성
+        background = cv2.resize(frame, (target_size[0], target_size[1]))
+        background = cv2.GaussianBlur(background, (99, 99), 30)
 
-            # 이미지 크기가 타겟 크기와 다른 경우 리사이즈
-            main_img = cv2.resize(main_img, (main_width, height))
-            final_frame[:, :main_width] = main_img
+        # 프레임을 중앙에 배치
+        height, width = frame.shape[:2]
+        y_offset = (target_size[1] - height) // 2
+        x_offset = (target_size[0] - width) // 2
 
-            # 사이드 영상 프레임을 오른쪽에 배치
-            if side_frame is not None:
-                resized_side = cv2.resize(side_frame, (side_width, height))
-                final_frame[:, main_width:] = resized_side
+        background[y_offset:y_offset + height, x_offset:x_offset + width] = frame
+        return background
 
-            # 자막 처리
-            subtitle_img = Image.open(subtitle_img_path)
-            target_height = 90
-            aspect_ratio = subtitle_img.size[0] / subtitle_img.size[1]
-            target_width = int(target_height * aspect_ratio)
+    def create_frame(self, main_path, subtitle_img_path, side_frame, frame_size, frame_index, total_frames):
+        """프레임 생성 함수"""
+        main_width = 1370
+        side_width = 550
+        height = 1080
 
-            if target_width > main_width:
-                target_width = main_width
-                target_height = int(target_width / aspect_ratio)
-
-            subtitle_img = subtitle_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
-
-            if subtitle_img.mode == 'RGBA':
-                subtitle = np.array(subtitle_img)
-                alpha = subtitle[:, :, 3] / 255.0
-                bgr = cv2.cvtColor(subtitle[:, :, :3], cv2.COLOR_RGB2BGR)
-
-                y_pos = height - target_height - 60
-                x_pos = (main_width - target_width) // 2
-                roi = final_frame[y_pos:y_pos + target_height, x_pos:x_pos + target_width]
-
-                for c in range(3):
-                    roi[:, :, c] = roi[:, :, c] * (1 - alpha) + bgr[:, :, c] * alpha
-
-                final_frame[y_pos:y_pos + target_height, x_pos:x_pos + target_width] = roi
+        # 메인 컨텐츠 처리 (이미지 또는 비디오)
+        if main_path.lower().endswith(('.mp4', '.avi', '.mov', '.gif')):
+            cap = cv2.VideoCapture(main_path)
+            # 프레임 인덱스에 따라 적절한 프레임 추출
+            total_video_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+            if total_video_frames > 0:
+                target_frame = frame_index % total_video_frames
+                cap.set(cv2.CAP_PROP_POS_FRAMES, target_frame)
+                ret, main_frame = cap.read()
+                cap.release()
+                if ret:
+                    main_img = self.process_video_frame(main_frame, (main_width, height))
+                else:
+                    main_img = np.zeros((height, main_width, 3), dtype=np.uint8)
             else:
-                subtitle_img = subtitle_img.convert('RGB')
-                subtitle = cv2.cvtColor(np.array(subtitle_img), cv2.COLOR_RGB2BGR)
-                y_pos = height - target_height - 60
-                x_pos = (main_width - target_width) // 2
-                final_frame[y_pos:y_pos + target_height, x_pos:x_pos + target_width] = subtitle
+                main_img = np.zeros((height, main_width, 3), dtype=np.uint8)
+        else:
+            # 이미지 처리 (기존 process_image 함수 사용)
+            main_img = self.process_image(main_path, (main_width, height), 'original')
 
-            return final_frame
+        # 최종 프레임 생성
+        final_frame = np.zeros((height, main_width + side_width, 3), dtype=np.uint8)
+        final_frame[:, :main_width] = main_img
 
-        except Exception as e:
-            print(f"프레임 생성 중 오류 발생: {str(e)}")
-            raise
+        # 사이드 영상 프레임 배치
+        if side_frame is not None:
+            resized_side = cv2.resize(side_frame, (side_width, height))
+            final_frame[:, main_width:] = resized_side
+
+        # 자막 처리
+        subtitle_img = Image.open(subtitle_img_path)
+        target_height = 90
+        aspect_ratio = subtitle_img.size[0] / subtitle_img.size[1]
+        target_width = int(target_height * aspect_ratio)
+
+        if target_width > main_width:
+            target_width = main_width
+            target_height = int(target_width / aspect_ratio)
+
+        subtitle_img = subtitle_img.resize((target_width, target_height), Image.Resampling.LANCZOS)
+
+        if subtitle_img.mode == 'RGBA':
+            subtitle = np.array(subtitle_img)
+            alpha = subtitle[:, :, 3] / 255.0
+            bgr = cv2.cvtColor(subtitle[:, :, :3], cv2.COLOR_RGB2BGR)
+
+            y_pos = height - target_height - 60
+            x_pos = (main_width - target_width) // 2
+            roi = final_frame[y_pos:y_pos + target_height, x_pos:x_pos + target_width]
+
+            for c in range(3):
+                roi[:, :, c] = roi[:, :, c] * (1 - alpha) + bgr[:, :, c] * alpha
+
+            final_frame[y_pos:y_pos + target_height, x_pos:x_pos + target_width] = roi
+        else:
+            subtitle_img = subtitle_img.convert('RGB')
+            subtitle = cv2.cvtColor(np.array(subtitle_img), cv2.COLOR_RGB2BGR)
+            y_pos = height - target_height - 60
+            x_pos = (main_width - target_width) // 2
+            final_frame[y_pos:y_pos + target_height, x_pos:x_pos + target_width] = subtitle
+
+        return final_frame
 
     def create_video(self, save_path):
         try:
@@ -241,37 +286,56 @@ class VideoMakerApp:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(temp_video_path, fourcc, fps, frame_size)
 
-            total_items = len(self.items)
-            total_frames = 0
+            # 각 클립의 시작 시간을 저장할 리스트
+            clip_start_times = []
+            current_time = 0
 
-            # 총 프레임 수 계산
+            # 각 클립의 길이 계산
             for item in self.items:
-                audio_path = item[2]  # 음성 파일 경로
-                duration = self.get_wav_duration(audio_path)
-                total_frames += int(duration * fps)
+                main_path = item[0]
+                audio_path = item[2]
 
+                # 비디오/GIF와 오디오 중 더 긴 길이 사용
+                video_duration = self.get_media_duration(main_path)
+                audio_duration = self.get_media_duration(audio_path)
+                clip_duration = max(video_duration, audio_duration)
+
+                clip_start_times.append(current_time)
+                current_time += clip_duration
+
+            total_frames = int(current_time * fps)
             frame_count = 0
-            for i, item in enumerate(self.items):
-                progress = int((i / total_items) * 100)
-                self.root.after(0, self.update_progress, progress, f'처리 중... {i + 1}/{total_items}')
 
-                main_img_path = item[0]  # 메인 이미지 경로
-                subtitle_img_path = item[1]  # 자막 이미지 경로
-                audio_path = item[2]  # 음성 파일 경로
-                display_mode = item[3]  # 표시 방식
+            for frame_idx in range(total_frames):
+                current_time = frame_idx / fps
 
-                duration = self.get_wav_duration(audio_path)
-                section_frame_count = int(duration * fps)
+                # 현재 프레임이 속한 클립 찾기
+                current_clip_idx = 0
+                for i in range(len(clip_start_times)):
+                    if current_time >= clip_start_times[i]:
+                        current_clip_idx = i
+                    else:
+                        break
 
-                for _ in range(section_frame_count):
-                    if side_video is not None:
-                        ret, side_frame = side_video.read()
-                        if not ret:
-                            side_frame = np.zeros((1080, 550, 3), dtype=np.uint8)
+                item = self.items[current_clip_idx]
+                if side_video is not None:
+                    ret, side_frame = side_video.read()
+                    if not ret:
+                        side_frame = np.zeros((1080, 550, 3), dtype=np.uint8)
 
-                    frame = self.create_frame(main_img_path, subtitle_img_path, side_frame, frame_size, display_mode)
-                    out.write(frame)
-                    frame_count += 1
+                frame = self.create_frame(
+                    item[0],  # main_path
+                    item[1],  # subtitle_path
+                    side_frame,
+                    frame_size,
+                    frame_idx - int(clip_start_times[current_clip_idx] * fps),  # 클립 내에서의 프레임 인덱스
+                    total_frames
+                )
+                out.write(frame)
+                frame_count += 1
+
+                progress = int((frame_count / total_frames) * 95)
+                self.root.after(0, self.update_progress, progress, f'처리 중... {frame_count}/{total_frames}')
 
             if side_video is not None:
                 side_video.release()
@@ -279,25 +343,45 @@ class VideoMakerApp:
 
             self.root.after(0, self.update_progress, 95, '오디오 병합 중...')
 
-            # 오디오 처리
-            audio_inputs = []
+            # ffmpeg 명령어 생성
+            ffmpeg_inputs = ['-i', temp_video_path]
             filter_complex = []
+            input_index = 1
 
             for i, item in enumerate(self.items):
-                audio_inputs.extend(['-i', item[2]])  # 음성 파일 경로
-                filter_complex.append(f'[{i + 1}:a]')
+                main_path = item[0]
+                audio_path = item[2]
 
-            filter_complex = ''.join(filter_complex) + f'concat=n={len(self.items)}:v=0:a=1[aout]'
+                # 메인 비디오의 오디오가 있는 경우
+                if main_path.lower().endswith(('.mp4', '.avi', '.mov')):
+                    ffmpeg_inputs.extend(['-i', main_path])
+                    filter_complex.append(
+                        f'[{input_index}:a]adelay={int(clip_start_times[i] * 1000)}|{int(clip_start_times[i] * 1000)}[v{i}];')
+                    input_index += 1
 
-            ffmpeg_command = ['ffmpeg', '-y', '-i', temp_video_path] + audio_inputs + \
-                             ['-filter_complex', filter_complex, '-map', '0:v', '-map', '[aout]',
+                # 음성 클립 추가
+                ffmpeg_inputs.extend(['-i', audio_path])
+                filter_complex.append(
+                    f'[{input_index}:a]adelay={int(clip_start_times[i] * 1000)}|{int(clip_start_times[i] * 1000)}[a{i}];')
+                input_index += 1
+
+            # 모든 오디오 믹스
+            mix_inputs = []
+            for i in range(len(self.items)):
+                if self.items[i][0].lower().endswith(('.mp4', '.avi', '.mov')):
+                    mix_inputs.append(f'[v{i}]')
+                mix_inputs.append(f'[a{i}]')
+
+            filter_complex.append(f'{"".join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=longest[aout]')
+
+            ffmpeg_command = ['ffmpeg', '-y'] + ffmpeg_inputs + \
+                             ['-filter_complex', ''.join(filter_complex),
+                              '-map', '0:v', '-map', '[aout]',
                               '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
                               '-c:a', 'aac', '-b:a', '192k',
                               save_path]
 
-            import subprocess
             subprocess.run(ffmpeg_command)
-
             os.remove(temp_video_path)
 
             self.root.after(0, self.update_progress, 100, '완료!')
@@ -386,7 +470,13 @@ class ItemDialog(tk.Toplevel):
 
     def browse_file(self, file_type):
         filetypes = []
-        if file_type in ['main', 'subtitle']:
+        if file_type == 'main':
+            filetypes = [
+                ('All supported files', '*.png *.jpg *.jpeg *.mp4 *.avi *.mov *.gif'),
+                ('Image files', '*.png *.jpg *.jpeg'),
+                ('Video files', '*.mp4 *.avi *.mov *.gif')
+            ]
+        elif file_type == 'subtitle':
             filetypes = [('Image files', '*.png *.jpg *.jpeg')]
         elif file_type == 'audio':
             filetypes = [('Audio files', '*.wav')]
