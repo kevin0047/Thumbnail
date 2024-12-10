@@ -3,7 +3,7 @@ from tkinter import ttk, filedialog, messagebox
 import os
 import cv2
 import numpy as np
-from PIL import Image, ImageFilter, ImageSequence
+from PIL import Image, ImageFilter
 import threading
 import wave
 from datetime import datetime
@@ -14,11 +14,12 @@ class VideoMakerApp:
     def __init__(self, root):
         self.root = root
         self.root.title('영상 제작 프로그램')
-        self.root.geometry('1000x800')
+        self.root.geometry('1000x600')
 
         self.side_video_path = r'C:\Users\ska00\Desktop\news\output_comments.mp4'
         self.items = []  # 이미지/영상, 자막, 음성 파일 정보를 저장할 리스트
         self.create_widgets()
+
 
     def create_widgets(self):
         main_frame = ttk.Frame(self.root, padding="10")
@@ -406,7 +407,6 @@ class VideoMakerApp:
                 main_path = item[0]
                 audio_path = item[2]
 
-                # 비디오/GIF와 오디오 중 더 긴 길이 사용
                 video_duration = self.get_media_duration(main_path)
                 audio_duration = self.get_media_duration(audio_path)
                 clip_duration = max(video_duration, audio_duration)
@@ -418,11 +418,9 @@ class VideoMakerApp:
             total_frames = int(current_time * fps)
             frame_count = 0
 
-            # 프레임 생성 및 저장
+            # 비디오 프레임 처리 (이전과 동일)
             for frame_idx in range(total_frames):
                 current_time = frame_idx / fps
-
-                # 현재 프레임이 속한 클립 찾기
                 current_clip_idx = 0
                 for i in range(len(clip_start_times)):
                     if current_time >= clip_start_times[i]:
@@ -436,20 +434,15 @@ class VideoMakerApp:
                     if not ret:
                         side_frame = np.zeros((1080, 550, 3), dtype=np.uint8)
 
-                # 현재 클립 내에서의 프레임 인덱스 계산
                 clip_frame_idx = frame_idx - int(clip_start_times[current_clip_idx] * fps)
                 clip_total_frames = int(clip_durations[current_clip_idx] * fps)
 
                 frame = self.create_frame(
-                    item[0],  # main_path
-                    item[1],  # subtitle_path
-                    side_frame,
-                    frame_size,
-                    clip_frame_idx,
-                    clip_total_frames,
-                    item[4] if len(item) > 4 else False,  # panning_enabled
-                    item[5] if len(item) > 5 else "",  # sub_image_path
-                    item[6] if len(item) > 6 else False  # sub_border
+                    item[0], item[1], side_frame, frame_size,
+                    clip_frame_idx, clip_total_frames,
+                    item[4] if len(item) > 4 else False,
+                    item[5] if len(item) > 5 else "",
+                    item[6] if len(item) > 6 else False
                 )
                 out.write(frame)
                 frame_count += 1
@@ -463,44 +456,46 @@ class VideoMakerApp:
 
             self.root.after(0, self.update_progress, 95, '오디오 병합 중...')
 
-            # ffmpeg 명령어 생성
+            # 수정된 ffmpeg 오디오 처리 부분
             ffmpeg_inputs = ['-i', temp_video_path]
-            filter_complex = []
-            input_index = 1
 
-            # 각 클립의 오디오 처리
+            # 각 음성 파일에 대한 입력 추가
             for i, item in enumerate(self.items):
-                main_path = item[0]
                 audio_path = item[2]
-
-                # 메인 비디오의 오디오가 있는 경우
-                if main_path.lower().endswith(('.mp4', '.avi', '.mov')):
-                    ffmpeg_inputs.extend(['-i', main_path])
-                    filter_complex.append(
-                        f'[{input_index}:a]adelay={int(clip_start_times[i] * 1000)}|{int(clip_start_times[i] * 1000)}[v{i}];')
-                    input_index += 1
-
-                # 음성 클립 추가
                 ffmpeg_inputs.extend(['-i', audio_path])
-                filter_complex.append(
-                    f'[{input_index}:a]adelay={int(clip_start_times[i] * 1000)}|{int(clip_start_times[i] * 1000)}[a{i}];')
-                input_index += 1
+
+            # 필터 복잡도 문자열 생성
+            filter_parts = []
+
+            # 클립 개수에 따라 볼륨 조절
+            volume_factor = 1.0 / len(self.items)
+
+            # 각 오디오 트랙에 대한 필터 체인
+            for i in range(len(self.items)):
+                start_time = clip_start_times[i]
+                duration = clip_durations[i]
+                filter_parts.append(
+                    f'[{i + 1}:a]volume={volume_factor},'
+                    f'atrim=start=0:duration={duration},'
+                    f'adelay={int(start_time * 1000)}|{int(start_time * 1000)}[a{i}]'
+                )
 
             # 모든 오디오 트랙 믹스
-            mix_inputs = []
-            for i in range(len(self.items)):
-                if self.items[i][0].lower().endswith(('.mp4', '.avi', '.mov')):
-                    mix_inputs.append(f'[v{i}]')
-                mix_inputs.append(f'[a{i}]')
+            mix_inputs = ''.join([f'[a{i}]' for i in range(len(self.items))])
+            filter_parts.append(
+                f'{mix_inputs}amix=inputs={len(self.items)}:'
+                f'dropout_transition=0:normalize=0[aout]'
+            )
 
-            filter_complex.append(f'{"".join(mix_inputs)}amix=inputs={len(mix_inputs)}:duration=longest[aout]')
+            filter_complex = ';'.join(filter_parts)
 
             # 최종 ffmpeg 명령어 실행
             ffmpeg_command = ['ffmpeg', '-y'] + ffmpeg_inputs + \
-                             ['-filter_complex', ''.join(filter_complex),
+                             ['-filter_complex', filter_complex,
                               '-map', '0:v', '-map', '[aout]',
-                              '-c:v', 'libx264', '-preset', 'medium', '-crf', '23',
+                              '-c:v', 'copy',
                               '-c:a', 'aac', '-b:a', '192k',
+                              '-shortest',
                               save_path]
 
             subprocess.run(ffmpeg_command)
@@ -550,7 +545,7 @@ class ItemDialog(tk.Toplevel):
         self.transient(parent)
         self.grab_set()
         self.geometry('800x500')  # 높이 증가
-        self.resizable(False, False)
+        self.resizable(True, True)
 
     def create_widgets(self):
         main_frame = ttk.Frame(self, padding="10")
