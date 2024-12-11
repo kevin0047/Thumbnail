@@ -489,7 +489,7 @@ class VideoMakerApp:
             mix_inputs = ''.join([f'[a{i}]' for i in range(len(self.items))])
             filter_parts.append(
                 f'{mix_inputs}amix=inputs={len(self.items)}:'
-                f'dropout_transition=0:normalize=0[aout]'
+                f'dropout_transition=0:normalize=0,volume=1.3[aout]'
             )
 
             filter_complex = ';'.join(filter_parts)
