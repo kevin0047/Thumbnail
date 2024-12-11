@@ -16,20 +16,25 @@ class VideoMakerApp:
         self.root.title('영상 제작 프로그램')
         self.root.geometry('1000x600')
 
+        # 사이드 영상 경로를 직접 지정
         self.side_video_path = r'C:\Users\ska00\Desktop\news\output_comments.mp4'
         self.items = []  # 이미지/영상, 자막, 음성 파일 정보를 저장할 리스트
         self.create_widgets()
-
 
     def create_widgets(self):
         main_frame = ttk.Frame(self.root, padding="10")
         main_frame.grid(row=0, column=0, sticky=(tk.W, tk.E, tk.N, tk.S))
 
-        # 사이드 영상 선택 버튼
-        ttk.Button(main_frame, text='사이드 영상 선택',
-                   command=self.select_side_video).grid(row=0, column=0, pady=5, sticky=tk.W)
-        self.side_video_label = ttk.Label(main_frame, text='사이드 영상: 선택되지 않음')
+        # 사이드 영상 상태 표시 레이블
+        self.side_video_label = ttk.Label(main_frame)
         self.side_video_label.grid(row=1, column=0, pady=5, sticky=tk.W)
+
+        # 사이드 영상 존재 여부 확인 및 레이블 업데이트
+        if os.path.exists(self.side_video_path):
+            self.side_video_label.config(text=f'사이드 영상: {self.side_video_path}')
+        else:
+            self.side_video_label.config(text='사이드 영상을 찾을 수 없습니다!')
+            messagebox.showwarning('경고', f'사이드 영상을 찾을 수 없습니다: {self.side_video_path}')
 
         # 리스트 관리 위젯
         list_frame = ttk.LabelFrame(main_frame, text="이미지 및 음성 관리", padding="5")
@@ -537,6 +542,19 @@ class ItemDialog(tk.Toplevel):
         self.title("항목 추가")
         self.result = None
 
+        # 각 파일 유형별 기본 경로 설정
+        self.default_paths = {
+            'main': r'C:\Users\ska00\Desktop\news\img',  # 메인 이미지/비디오 경로
+            'sub': r'C:\Users\ska00\Desktop\news\img',  # 서브 이미지 경로
+            'subtitle': r'C:\Users\ska00\Desktop\news\voice',  # 자막 이미지 경로
+            'audio': r'C:\Users\ska00\Desktop\news\voice'  # 음성 파일 경로
+        }
+
+        # 각 경로가 존재하는지 확인하고 없으면 생성
+        for path in self.default_paths.values():
+            if not os.path.exists(path):
+                os.makedirs(path)
+
         # 변수 추가
         self.sub_image_path = tk.StringVar()
         self.sub_border = tk.BooleanVar(value=False)
@@ -544,7 +562,7 @@ class ItemDialog(tk.Toplevel):
         self.create_widgets()
         self.transient(parent)
         self.grab_set()
-        self.geometry('800x500')  # 높이 증가
+        self.geometry('800x500')
         self.resizable(True, True)
 
     def create_widgets(self):
@@ -607,6 +625,8 @@ class ItemDialog(tk.Toplevel):
 
     def browse_file(self, file_type):
         filetypes = []
+        initial_dir = self.default_paths.get(file_type, os.path.expanduser('~'))
+
         if file_type == 'main':
             filetypes = [
                 ('All supported files', '*.png *.jpg *.jpeg *.mp4 *.avi *.mov *.gif'),
@@ -618,7 +638,11 @@ class ItemDialog(tk.Toplevel):
         elif file_type == 'audio':
             filetypes = [('Audio files', '*.wav')]
 
-        path = filedialog.askopenfilename(filetypes=filetypes)
+        path = filedialog.askopenfilename(
+            initialdir=initial_dir,
+            filetypes=filetypes
+        )
+
         if path:
             if file_type == 'main':
                 self.main_path.set(path)
