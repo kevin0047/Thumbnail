@@ -469,18 +469,16 @@ class VideoMakerApp:
                 audio_path = item[2]
                 ffmpeg_inputs.extend(['-i', audio_path])
 
-            # 필터 복잡도 문자열 생성
+            # FFmpeg 필터 복잡도 문자열 생성 부분을 다음과 같이 수정
             filter_parts = []
-
-            # 클립 개수에 따라 볼륨 조절
-            volume_factor = 1.0 / len(self.items)
 
             # 각 오디오 트랙에 대한 필터 체인
             for i in range(len(self.items)):
                 start_time = clip_start_times[i]
                 duration = clip_durations[i]
+                # 각 클립의 볼륨을 개별적으로 조절 (볼륨을 1로 유지)
                 filter_parts.append(
-                    f'[{i + 1}:a]volume={volume_factor},'
+                    f'[{i + 1}:a]volume=1.0,'
                     f'atrim=start=0:duration={duration},'
                     f'adelay={int(start_time * 1000)}|{int(start_time * 1000)}[a{i}]'
                 )
@@ -489,7 +487,7 @@ class VideoMakerApp:
             mix_inputs = ''.join([f'[a{i}]' for i in range(len(self.items))])
             filter_parts.append(
                 f'{mix_inputs}amix=inputs={len(self.items)}:'
-                f'dropout_transition=0:normalize=0,volume=1.3[aout]'
+                f'dropout_transition=0:normalize=0,volume=1.5[aout]'
             )
 
             filter_complex = ';'.join(filter_parts)
