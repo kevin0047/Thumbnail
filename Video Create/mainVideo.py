@@ -98,11 +98,28 @@ class VideoMakerApp:
 
     def delete_selected(self):
         selected = self.tree.selection()
+        if not selected:
+            return
+
+        # 선택된 아이템의 인덱스들을 먼저 수집
+        indices = []
         for item in selected:
-            self.tree.delete(item)
-            index = self.tree.index(item)
-            if 0 <= index < len(self.items):
-                self.items.pop(index)
+            try:
+                idx = self.tree.index(item)
+                indices.append(idx)
+            except:
+                continue
+
+        # 인덱스를 내림차순으로 정렬 (큰 인덱스부터 삭제)
+        indices.sort(reverse=True)
+
+        # Treeview에서 선택된 아이템들 삭제
+        self.tree.delete(*selected)
+
+        # items 리스트에서 해당 인덱스들의 아이템 삭제
+        for idx in indices:
+            if 0 <= idx < len(self.items):
+                self.items.pop(idx)
 
     def process_image(self, image_path, target_size, display_mode='fit'):
         """이미지 처리 함수"""

@@ -30,7 +30,7 @@ class ThumbnailEditor:
         # 그림자 효과 변수
         self.shadow_enabled = tk.BooleanVar(value=True)
         self.shadow_color = "#000000"
-        self.shadow_offset = 3
+        self.shadow_offset = 5
 
         # 폰트 경로 설정
         self.font_path = "Recipekorea 레코체 FONT.ttf"
