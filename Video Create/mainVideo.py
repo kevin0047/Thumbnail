@@ -573,6 +573,7 @@ class ItemDialog(tk.Toplevel):
         # 변수 추가
         self.sub_image_path = tk.StringVar()
         self.sub_border = tk.BooleanVar(value=False)
+        self.audio_path = tk.StringVar()  # 음성 파일 경로를 저장할 변수
 
         self.create_widgets()
         self.transient(parent)
@@ -604,14 +605,17 @@ class ItemDialog(tk.Toplevel):
         # 자막 이미지 선택
         ttk.Label(main_frame, text="자막 이미지:").grid(row=3, column=0, padx=5, pady=5, sticky='e')
         self.subtitle_path = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.subtitle_path, width=50).grid(row=3, column=1, padx=5)
+        subtitle_entry = ttk.Entry(main_frame, textvariable=self.subtitle_path, width=50)
+        subtitle_entry.grid(row=3, column=1, padx=5)
         ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('subtitle')).grid(row=3, column=2, padx=5)
 
-        # 음성 파일 선택
+        # 자막 선택 시 음성 파일 자동 매칭을 위한 트레이스 추가
+        self.subtitle_path.trace_add('write', self.match_audio_file)
+
+        # 음성 파일 표시 (읽기 전용)
         ttk.Label(main_frame, text="음성 파일:").grid(row=4, column=0, padx=5, pady=5, sticky='e')
-        self.audio_path = tk.StringVar()
-        ttk.Entry(main_frame, textvariable=self.audio_path, width=50).grid(row=4, column=1, padx=5)
-        ttk.Button(main_frame, text="찾아보기", command=lambda: self.browse_file('audio')).grid(row=4, column=2, padx=5)
+        self.audio_display = ttk.Entry(main_frame, textvariable=self.audio_path, width=50, state='readonly')
+        self.audio_display.grid(row=4, column=1, padx=5)
 
         # 이미지 표시 방식 선택
         display_frame = ttk.LabelFrame(main_frame, text="이미지 표시 방식", padding="5")
@@ -638,6 +642,34 @@ class ItemDialog(tk.Toplevel):
         ttk.Button(button_frame, text="확인", command=self.confirm, width=10).pack(side='left', padx=10)
         ttk.Button(button_frame, text="취소", command=self.cancel, width=10).pack(side='left', padx=10)
 
+    def match_audio_file(self, *args):
+        subtitle_path = self.subtitle_path.get()
+        if subtitle_path:
+            try:
+                # 자막 파일명에서 번호만 추출 (_로 구분)
+                filename = os.path.basename(subtitle_path)
+                number = filename.split('_')[0]  # 번호 추출
+
+                # 음성 파일 경로에서 정확한 번호와 일치하는 wav 파일 검색
+                voice_dir = self.default_paths['audio']
+                for file in os.listdir(voice_dir):
+                    # tts 다음에 오는 번호가 정확히 일치하는지 확인
+                    if file.startswith('tts') and file.endswith('.wav'):
+                        # tts 다음의 번호만 추출
+                        file_number = file[3:].split('_')[0]
+                        # 정확한 번호 매칭
+                        if file_number == number:
+                            audio_path = os.path.join(voice_dir, file)
+                            self.audio_path.set(audio_path)
+                            return
+
+                # 매칭되는 파일을 찾지 못한 경우
+                self.audio_path.set('')
+                messagebox.showwarning('경고', f'매칭되는 음성 파일을 찾을 수 없습니다: 번호 {number}에 해당하는 tts 파일')
+            except Exception as e:
+                self.audio_path.set('')
+                messagebox.showwarning('경고', f'자막 파일명 형식이 올바르지 않습니다. (숫자_텍스트.png 형식이어야 합니다)')
+
     def browse_file(self, file_type):
         filetypes = []
         initial_dir = self.default_paths.get(file_type, os.path.expanduser('~'))
@@ -650,8 +682,6 @@ class ItemDialog(tk.Toplevel):
             ]
         elif file_type in ['sub', 'subtitle']:
             filetypes = [('Image files', '*.png *.jpg *.jpeg')]
-        elif file_type == 'audio':
-            filetypes = [('Audio files', '*.wav')]
 
         path = filedialog.askopenfilename(
             initialdir=initial_dir,
@@ -665,8 +695,6 @@ class ItemDialog(tk.Toplevel):
                 self.sub_image_path.set(path)
             elif file_type == 'subtitle':
                 self.subtitle_path.set(path)
-            else:
-                self.audio_path.set(path)
 
     def confirm(self):
         if not all([self.main_path.get(), self.subtitle_path.get(), self.audio_path.get()]):
