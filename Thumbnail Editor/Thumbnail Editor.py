@@ -6,6 +6,7 @@ import numpy as np
 import os
 import re
 import json
+from datetime import datetime
 
 
 class ThumbnailEditor:
@@ -13,7 +14,11 @@ class ThumbnailEditor:
         self.root = root
         self.root.title("썸네일 편집기")
 
-
+        # 저장 경로 설정
+        self.save_directory = r"C:\Users\ska00\Desktop\news"
+        # 저장 디렉토리가 없으면 생성
+        if not os.path.exists(self.save_directory):
+            os.makedirs(self.save_directory)
 
         # 이미지 관련 변수
         self.image = None
@@ -407,28 +412,25 @@ class ThumbnailEditor:
     def save_image(self):
         if self.image is not None:
             try:
-                file_path = filedialog.asksaveasfilename(
-                    defaultextension=".png",
-                    filetypes=[("PNG files", "*.png"),
-                               ("JPEG files", "*.jpg"),
-                               ("All files", "*.*")]
-                )
+                # 현재 날짜와 시간을 파일명에 포함
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"thumbnail_{timestamp}.png"
+                file_path = os.path.join(self.save_directory, filename)
 
-                if file_path:
-                    save_image = self.image.copy()
-                    draw = ImageDraw.Draw(save_image)
-                    font = self.get_font(int(self.text_size / self.display_scale))
+                save_image = self.image.copy()
+                draw = ImageDraw.Draw(save_image)
+                font = self.get_font(int(self.text_size / self.display_scale))
 
-                    orig_x = int(self.text_position[0] / self.display_scale)
-                    orig_y = int(self.text_position[1] / self.display_scale)
+                orig_x = int(self.text_position[0] / self.display_scale)
+                orig_y = int(self.text_position[1] / self.display_scale)
 
-                    self.draw_text_with_effects(draw, (orig_x, orig_y),
-                                                self.current_text,
-                                                self.highlight_text,
-                                                font, self.text_color)
+                self.draw_text_with_effects(draw, (orig_x, orig_y),
+                                            self.current_text,
+                                            self.highlight_text,
+                                            font, self.text_color)
 
-                    save_image.save(file_path)
-                    messagebox.showinfo("성공", "이미지가 성공적으로 저장되었습니다!")
+                save_image.save(file_path)
+                messagebox.showinfo("성공", f"이미지가 성공적으로 저장되었습니다!\n저장 위치: {file_path}")
 
             except Exception as e:
                 messagebox.showerror("Error", f"이미지 저장 중 오류가 발생했습니다:\n{str(e)}")

@@ -8,13 +8,12 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.common.keys import Keys
 import pyaudio
 import wave
 from pydub import AudioSegment
 from pydub.silence import split_on_silence, detect_nonsilent
 import time
-import threading
+
 
 
 class SubtitleTTSGeneratorGUI:
@@ -23,10 +22,18 @@ class SubtitleTTSGeneratorGUI:
         self.root.title("자막 및 음성 생성기")
         self.root.geometry("800x600")
 
+        # 기본 경로 설정
+        self.DEFAULT_INPUT_FILE = r"C:\Users\ska00\Desktop\news\대본.txt"
+        self.DEFAULT_OUTPUT_FOLDER = r"C:\Users\ska00\Desktop\news\voice"
+
         # 변수 초기화
-        self.input_file = tk.StringVar()
-        self.output_folder = tk.StringVar()
+        self.input_file = tk.StringVar(value=self.DEFAULT_INPUT_FILE)
+        self.output_folder = tk.StringVar(value=self.DEFAULT_OUTPUT_FOLDER)
         self.font_size = tk.StringVar(value="80")
+
+        # 출력 폴더가 없으면 생성
+        if not os.path.exists(self.DEFAULT_OUTPUT_FOLDER):
+            os.makedirs(self.DEFAULT_OUTPUT_FOLDER)
 
         # 고정 TTS 설정
         self.CHARS_PER_SECOND = 6
@@ -54,8 +61,7 @@ class SubtitleTTSGeneratorGUI:
         ttk.Label(input_frame, text="대본 파일:").pack(anchor='w')
         input_file_frame = ttk.Frame(input_frame)
         input_file_frame.pack(fill='x')
-        ttk.Entry(input_file_frame, textvariable=self.input_file).pack(side='left', fill='x', expand=True)
-        ttk.Button(input_file_frame, text="찾아보기", command=self.browse_input_file).pack(side='right', padx=5)
+        ttk.Entry(input_file_frame, textvariable=self.input_file, state='readonly').pack(side='left', fill='x', expand=True)
 
         # 출력 폴더 선택
         output_frame = ttk.LabelFrame(self.root, text="출력 설정", padding=10)
@@ -64,8 +70,7 @@ class SubtitleTTSGeneratorGUI:
         ttk.Label(output_frame, text="출력 폴더:").pack(anchor='w')
         output_folder_frame = ttk.Frame(output_frame)
         output_folder_frame.pack(fill='x')
-        ttk.Entry(output_folder_frame, textvariable=self.output_folder).pack(side='left', fill='x', expand=True)
-        ttk.Button(output_folder_frame, text="찾아보기", command=self.browse_output_folder).pack(side='right', padx=5)
+        ttk.Entry(output_folder_frame, textvariable=self.output_folder, state='readonly').pack(side='left', fill='x', expand=True)
 
         # 설정 프레임
         settings_frame = ttk.LabelFrame(self.root, text="설정", padding=10)
@@ -89,20 +94,6 @@ class SubtitleTTSGeneratorGUI:
 
         self.status_label = ttk.Label(self.root, text="")
         self.status_label.pack(pady=5)
-
-    def browse_input_file(self):
-        filename = filedialog.askopenfilename(
-            title="대본 파일 선택",
-            filetypes=[("Text files", "*.txt"), ("All files", "*.*")]
-        )
-        if filename:
-            self.input_file.set(filename)
-            #self.output_folder.set(os.path.dirname(filename))
-
-    def browse_output_folder(self):
-        folder = filedialog.askdirectory(title="출력 폴더 선택")
-        if folder:
-            self.output_folder.set(folder)
 
     def sanitize_filename(self, filename):
         return re.sub(r'[\\/*?:"<>|]', "_", filename)

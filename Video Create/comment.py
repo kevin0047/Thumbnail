@@ -163,7 +163,7 @@ class DataCollectorGUI:
             self.update_status("댓글 추출 중...")
             parent_elements = driver.find_elements(By.XPATH,
                                                    '//div[@class="clear cmt_txtbox"] | //div[@class="clear cmt_txtbox btn_reply_write_all"]')
-            filter_words = ["틱톡", "https", "실베", "kakao",".com","gall","store","MeritTV","도배","디시","디씨","갤러리","갤","🍀","⭐","고고혓"]  # 원하는 필터 단어 추가
+            filter_words = ["틱톡", "https", "실베", "kakao",".com","gall","store","MeritTV","도배","디시","디씨","갤러리","갤","🍀","⭐","고고혓","@@"]  # 원하는 필터 단어 추가
             seen_comments = set()
             is_first_comment = True
             comment_text = []
