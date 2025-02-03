@@ -23,8 +23,8 @@ class SubtitleTTSGeneratorGUI:
         self.root.geometry("800x600")
 
         # 기본 경로 설정
-        self.DEFAULT_INPUT_FILE = r"C:\Users\ska00\Desktop\news\대본.txt"
-        self.DEFAULT_OUTPUT_FOLDER = r"C:\Users\ska00\Desktop\news\voice"
+        self.DEFAULT_INPUT_FILE = "news/대본.txt"
+        self.DEFAULT_OUTPUT_FOLDER = "news/voice"
 
         # 변수 초기화
         self.input_file = tk.StringVar(value=self.DEFAULT_INPUT_FILE)

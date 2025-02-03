@@ -17,7 +17,7 @@ class VideoMakerApp:
         self.root.geometry('1000x600')
 
         # 사이드 영상 경로를 직접 지정
-        self.side_video_path = r'C:\Users\ska00\Desktop\news\output_comments.mp4'
+        self.side_video_path = 'news/output_comments.mp4'
         self.items = []  # 이미지/영상, 자막, 음성 파일 정보를 저장할 리스트
         self.create_widgets()
 
@@ -559,10 +559,10 @@ class ItemDialog(tk.Toplevel):
 
         # 각 파일 유형별 기본 경로 설정
         self.default_paths = {
-            'main': r'C:\Users\ska00\Desktop\news\img',  # 메인 이미지/비디오 경로
-            'sub': r'C:\Users\ska00\Desktop\news\img',  # 서브 이미지 경로
-            'subtitle': r'C:\Users\ska00\Desktop\news\voice',  # 자막 이미지 경로
-            'audio': r'C:\Users\ska00\Desktop\news\voice'  # 음성 파일 경로
+            'main': 'news/img',  # 메인 이미지/비디오 경로
+            'sub': 'news/img',  # 서브 이미지 경로
+            'subtitle': 'news/voice',  # 자막 이미지 경로
+            'audio': 'news/voice'  # 음성 파일 경로
         }
 
         # 각 경로가 존재하는지 확인하고 없으면 생성
