@@ -1,8 +1,8 @@
 import tkinter as tk
 from tkinter import filedialog, colorchooser, messagebox, scrolledtext
 from PIL import Image, ImageTk, ImageFont, ImageDraw
-import cv2
-import numpy as np
+
+
 import os
 import re
 import json
@@ -15,7 +15,7 @@ class ThumbnailEditor:
         self.root.title("썸네일 편집기")
 
         # 저장 경로 설정
-        self.save_directory = r"C:\Users\ska00\Desktop\news"
+        self.save_directory = "news"
         # 저장 디렉토리가 없으면 생성
         if not os.path.exists(self.save_directory):
             os.makedirs(self.save_directory)
