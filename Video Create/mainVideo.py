@@ -322,10 +322,38 @@ class VideoMakerApp:
         final_frame = np.zeros((height, main_width + side_width, 3), dtype=np.uint8)
         final_frame[:, :main_width] = main_img
 
-        # 서브 이미지 처리 (있는 경우)
+       # 서브 이미지 처리 (있는 경우)
         if sub_image_path:
             try:
                 sub_img = Image.open(sub_image_path)
+
+                # 원본 이미지의 크기와 비율 계산
+                orig_width, orig_height = sub_img.size
+                aspect_ratio = orig_width / orig_height
+
+                # 목표 크기 계산 (화면의 80%)
+                target_width = int(main_width * 0.8)
+                target_height = int(height * 0.8)
+
+                # 더 긴 쪽을 기준으로 크기 조정
+                if orig_width > orig_height:
+                    # 가로가 더 긴 경우
+                    new_width = target_width
+                    new_height = int(new_width / aspect_ratio)
+                    if new_height > target_height:  # 높이가 제한을 넘는 경우
+                        new_height = target_height
+                        new_width = int(new_height * aspect_ratio)
+                else:
+                    # 세로가 더 긴 경우
+                    new_height = target_height
+                    new_width = int(new_height * aspect_ratio)
+                    if new_width > target_width:  # 너비가 제한을 넘는 경우
+                        new_width = target_width
+                        new_height = int(new_width / aspect_ratio)
+
+                # 이미지 리사이즈
+                sub_img = sub_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
                 # RGBA 처리
                 if sub_img.mode == 'RGBA':
                     sub_img_np = np.array(sub_img)

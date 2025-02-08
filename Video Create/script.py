@@ -195,7 +195,16 @@ class SubtitleTTSGeneratorGUI:
             with open(input_file, 'r', encoding='utf-8') as file:
                 sentences = file.read().split('\n')
 
+
             p = pyaudio.PyAudio()
+
+            # CABLE Output 장치 찾기
+            device_index = None
+            for i in range(p.get_device_count()):
+                device_info = p.get_device_info_by_index(i)
+                if 'CABLE Output' in device_info['name']:
+                    device_index = i
+                    break
             time.sleep(3)
 
             total_sentences = len([s for s in sentences if s.strip()])
@@ -220,6 +229,7 @@ class SubtitleTTSGeneratorGUI:
                                 channels=self.CHANNELS,
                                 rate=self.RATE,
                                 input=True,
+                                input_device_index=device_index,  # 여기에 device_index 추가
                                 frames_per_buffer=self.CHUNK)
 
                 for _ in range(0, int(self.RATE / self.CHUNK * RECORD_SECONDS)):
