@@ -122,61 +122,61 @@ class VideoMakerApp:
                 self.items.pop(idx)
 
     def process_image(self, image_path, target_size, display_mode='fit'):
-    """이미지 처리 함수"""
-    img = Image.open(image_path)
-    if display_mode == 'fit':
-        # 화면에 맞춤 모드 (기존 코드와 동일)
-        img_ratio = img.size[0] / img.size[1]
-        target_ratio = target_size[0] / target_size[1]
-        if img_ratio > target_ratio:
-            new_height = target_size[1]
-            new_width = int(new_height * img_ratio)
-        else:
-            new_width = target_size[0]
-            new_height = int(new_width / img_ratio)
-        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-    else:  # 원본 크기 모드
-        # 목표 크기의 95%
-        target_95_width = int(target_size[0] * 0.95)
-        target_95_height = int(target_size[1] * 0.95)
-        
-        # 이미지 비율 계산
-        img_ratio = img.size[0] / img.size[1]
-        
-        if img.size[0] > target_size[0] or img.size[1] > target_size[1]:
-            # 큰 이미지는 95%로 축소
-            width_scale = target_95_width / img.size[0]
-            height_scale = target_95_height / img.size[1]
-            scale = min(width_scale, height_scale)
-        else:
-            # 작은 이미지는 95%까지 확대
-            if img_ratio > 1:  # 가로가 더 긴 경우
-                scale = target_95_width / img.size[0]  # 가로 기준으로 스케일 계산
-            else:  # 세로가 더 길거나 같은 경우
-                scale = target_95_height / img.size[1]  # 세로 기준으로 스케일 계산
-        
-        # 새로운 크기 계산 및 리사이징
-        new_width = int(img.size[0] * scale)
-        new_height = int(img.size[1] * scale)
-        img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
-        
-        # 블러 처리된 배경 생성 (기존과 동일)
-        background = img.copy()
-        background = background.resize(target_size, Image.Resampling.LANCZOS)
-        background = background.filter(ImageFilter.GaussianBlur(radius=30))
-        
-        # 조정된 이미지를 중앙에 배치
-        paste_x = (target_size[0] - img.size[0]) // 2
-        paste_y = (target_size[1] - img.size[1]) // 2
-        background.paste(img, (paste_x, paste_y))
-        img = background
+        """이미지 처리 함수"""
+        img = Image.open(image_path)
+        if display_mode == 'fit':
+            # 화면에 맞춤 모드 (기존 코드와 동일)
+            img_ratio = img.size[0] / img.size[1]
+            target_ratio = target_size[0] / target_size[1]
+            if img_ratio > target_ratio:
+                new_height = target_size[1]
+                new_width = int(new_height * img_ratio)
+            else:
+                new_width = target_size[0]
+                new_height = int(new_width / img_ratio)
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+        else:  # 원본 크기 모드
+            # 목표 크기의 95%
+            target_95_width = int(target_size[0] * 0.95)
+            target_95_height = int(target_size[1] * 0.95)
 
-    # RGBA 처리 (기존 코드와 동일)
-    if img.mode == 'RGBA':
-        background = Image.new('RGB', img.size, (255, 255, 255))
-        background.paste(img, mask=img.split()[3])
-        img = background
-    return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
+            # 이미지 비율 계산
+            img_ratio = img.size[0] / img.size[1]
+
+            if img.size[0] > target_size[0] or img.size[1] > target_size[1]:
+                # 큰 이미지는 95%로 축소
+                width_scale = target_95_width / img.size[0]
+                height_scale = target_95_height / img.size[1]
+                scale = min(width_scale, height_scale)
+            else:
+                # 작은 이미지는 95%까지 확대
+                if img_ratio > 1:  # 가로가 더 긴 경우
+                    scale = target_95_width / img.size[0]  # 가로 기준으로 스케일 계산
+                else:  # 세로가 더 길거나 같은 경우
+                    scale = target_95_height / img.size[1]  # 세로 기준으로 스케일 계산
+
+            # 새로운 크기 계산 및 리사이징
+            new_width = int(img.size[0] * scale)
+            new_height = int(img.size[1] * scale)
+            img = img.resize((new_width, new_height), Image.Resampling.LANCZOS)
+
+            # 블러 처리된 배경 생성 (기존과 동일)
+            background = img.copy()
+            background = background.resize(target_size, Image.Resampling.LANCZOS)
+            background = background.filter(ImageFilter.GaussianBlur(radius=30))
+
+            # 조정된 이미지를 중앙에 배치
+            paste_x = (target_size[0] - img.size[0]) // 2
+            paste_y = (target_size[1] - img.size[1]) // 2
+            background.paste(img, (paste_x, paste_y))
+            img = background
+
+        # RGBA 처리 (기존 코드와 동일)
+        if img.mode == 'RGBA':
+            background = Image.new('RGB', img.size, (255, 255, 255))
+            background.paste(img, mask=img.split()[3])
+            img = background
+        return cv2.cvtColor(np.array(img), cv2.COLOR_RGB2BGR)
     
     def get_wav_duration(self, wav_path):
         with wave.open(wav_path, 'rb') as wav_file:
